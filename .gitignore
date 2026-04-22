@@ -180,6 +180,8 @@ examples/neural_graphs/*.yml
 
 .hydra/
 nemo_experiments/
+results/
+exports/
 
 slurm*.out
 

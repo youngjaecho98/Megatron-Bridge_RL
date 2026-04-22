@@ -73,9 +73,14 @@ def get_batch_from_iterator(
     if is_last_pp_stage:
         required_device_keys.update(("labels", "loss_mask"))
 
+    if "pixel_values_videos" in batch:
+        required_device_keys.add("pixel_values_videos")
+
     _batch_required_keys = {}
     for key, val in batch.items():
-        if key in required_device_keys:
+        if key == "visual_inputs":
+            _batch_required_keys[key] = val
+        elif key in required_device_keys:
             _batch_required_keys[key] = val.cuda(non_blocking=True) if val is not None else None
         elif key in required_host_keys:
             _batch_required_keys[key] = val.cpu() if val is not None else None
@@ -123,17 +128,26 @@ def get_batch(
     )
 
     # Keep optional vision tensors aside to avoid being dropped by CP slicing util
-    images = batch.get("pixel_values")
+    visual_inputs = batch.pop("visual_inputs", None)
+    images = batch.pop("pixel_values", None)
+    num_image_tiles = None
+
+    if visual_inputs is not None:
+        vi_dict = visual_inputs.normalized_for_model()
+        images = vi_dict.get("images", images)
+        num_image_tiles = vi_dict.get("num_image_tiles")
 
     # slice batch along sequence dimension for context parallelism
     batch = get_batch_on_this_cp_rank(batch, cp_group=pg_collection.cp)
     if images is not None:
-        batch["images"] = images
+        batch["images"] = images.cuda(non_blocking=True) if not images.is_cuda else images
+    if num_image_tiles is not None:
+        batch["num_image_tiles"] = num_image_tiles.cuda(non_blocking=True) if not num_image_tiles.is_cuda else num_image_tiles
 
     assert batch.get("tokens") is not None or batch.get("input_ids") is not None, "tokens or input_ids must be present"
     return (
-        batch["images"],
-        batch["num_patches"],
+        batch.get("images"),
+        batch.get("num_image_tiles") if batch.get("num_image_tiles") is not None else batch.get("num_patches"),
         batch.get("tokens") or batch.get("input_ids"),
         batch["labels"],
         batch["loss_mask"],
@@ -191,6 +205,8 @@ def forward_step(
         "labels": labels,
         "loss_mask": loss_mask,
     }
+    if num_patches is not None:
+        forward_args["num_image_tiles"] = num_patches
 
     # Add packed sequence support
     if cu_seqlens is not None:

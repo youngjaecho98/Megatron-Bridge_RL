@@ -699,6 +699,22 @@ class LoggerConfig(MTrainLoggerConfig):
     comet_tags: Optional[list[str]] = None
     """Optional list of tags to apply to the Comet ML experiment."""
 
+    eval_dump_dir: Optional[str] = None
+    """If set, evaluation may write lightweight JSON dumps under this root."""
+
+    eval_gt_jsonl_path: Optional[str] = None
+    """Optional JSONL path used by eval dumping utilities."""
+
+    eval_dump_max_records: Optional[int] = 1
+    """How many non-empty JSONL lines to read from ``eval_gt_jsonl_path`` each time eval dump runs."""
+
+    eval_dump_mode: str = "teacher_forced"
+    """Eval dump mode: ``"teacher_forced"`` feeds GT and reads argmax at supervised positions;
+    ``"generate"`` feeds only the user prompt and runs autoregressive greedy decoding."""
+
+    eval_generate_max_tokens: int = 4096
+    """Maximum number of new tokens to generate per sample when ``eval_dump_mode="generate"``."""
+
     logging_level: int = logging.INFO
     """Set default logging level"""
 

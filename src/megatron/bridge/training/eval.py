@@ -136,8 +136,18 @@ def evaluate(
         adjust_tensor_shapes_fn = None
 
     with torch.no_grad():
+        eval_loop_iters = state.cfg.validation.eval_iters
+        if (
+            getattr(state.cfg.validation, "skip_train", False)
+            and getattr(state.cfg.logger, "eval_dump_dir", None)
+            and getattr(state.cfg.logger, "eval_gt_jsonl_path", None)
+        ):
+            max_dump = getattr(state.cfg.logger, "eval_dump_max_records", None)
+            if max_dump is not None and max_dump >= 1:
+                eval_loop_iters = 0
+
         if verbose:
-            print_rank_0(f"Evaluating on {state.cfg.validation.eval_iters * eval_batch_size} samples")
+            print_rank_0(f"Evaluating on {eval_loop_iters * eval_batch_size} samples")
 
         if is_multimodule:
             # For multimodule, use forward_backward_pipelining_without_interleaving directly
@@ -165,10 +175,10 @@ def evaluate(
             )
 
         iteration = 0
-        while iteration < state.cfg.validation.eval_iters:
+        while iteration < eval_loop_iters:
             iteration += 1
             if verbose:
-                print_rank_0(f"Evaluating iter {iteration}/{state.cfg.validation.eval_iters}")
+                print_rank_0(f"Evaluating iter {iteration}/{eval_loop_iters}")
 
             # Handle finetuning vs pretraining data consumption
             seq_length = state.cfg.model.seq_length  # Default for pretraining
@@ -330,6 +340,17 @@ def evaluate(
                 p2p_communicator=non_loss_p2p_communicator,
                 pg_collection=pg_collection,
             )
+
+    # Optional: dump a small JSON artifact while still in eval mode (best-effort).
+    try:
+        from megatron.bridge.training.eval_dump import maybe_dump_eval_gt_pred_json
+
+        maybe_dump_eval_gt_pred_json(state=state, model=model, cfg=state.cfg)
+    except Exception as exc:
+        import traceback
+
+        print(f"[eval_dump] exception in maybe_dump_eval_gt_pred_json: {exc}", flush=True)
+        traceback.print_exc()
 
     # Move model back to the train mode.
     for model_module in model:

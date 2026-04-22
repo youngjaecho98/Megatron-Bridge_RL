@@ -239,10 +239,15 @@ def build_train_valid_test_data_loaders(
     dp_rank = torch.distributed.get_rank(group=dp_group)
     dp_size = torch.distributed.get_world_size(group=dp_group)
 
+    # When `skip_train` is set (eval-only / inference), start the train sampler at
+    # zero to satisfy `MegatronPretrainingSampler` asserts since the checkpoint's
+    # consumed_train_samples can exceed the current dataset size.
+    train_consumed = 0 if cfg.validation.skip_train else train_state.consumed_train_samples
+
     # Build dataloders.
     train_dataloader = build_pretraining_data_loader(
         train_ds,
-        train_state.consumed_train_samples,
+        train_consumed,
         cfg.dataset.dataloader_type,
         cfg.train.micro_batch_size,
         cfg.dataset.num_workers,

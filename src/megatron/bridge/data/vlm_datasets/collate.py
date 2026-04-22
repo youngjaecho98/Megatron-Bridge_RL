@@ -25,7 +25,12 @@ from PIL import Image  # noqa: F401  # may be used downstream by processors
 
 from megatron.bridge.data.datasets.utils import IGNORE_INDEX
 from megatron.bridge.data.vlm_datasets.token_utils import extract_skipped_token_ids
-from megatron.bridge.training.utils.visual_inputs import GenericVisualInputs, Qwen2_5_VLVisualInputs, Qwen2AudioInputs
+from megatron.bridge.training.utils.visual_inputs import (
+    GenericVisualInputs,
+    NemotronVLVisualInputs,
+    Qwen2_5_VLVisualInputs,
+    Qwen2AudioInputs,
+)
 
 
 # Local message used when optional qwen_vl_utils dependency is missing
@@ -362,7 +367,11 @@ def nemotron_nano_v2_vl_collate_fn(examples: list, processor, start_of_response_
     key = "pixel_values_videos" if is_video else "pixel_values"
     pv = batch[key].to(torch.bfloat16)
     batch[key] = pv
-    batch["visual_inputs"] = GenericVisualInputs(pixel_values=pv)
+    # LLaVAModel expects one num_image_tiles entry per <image> token.
+    # After adjust_image_tokens each <image> token maps to exactly 1 tile.
+    total_tiles = pv.shape[0]
+    num_image_tiles = torch.ones(total_tiles, dtype=torch.int)
+    batch["visual_inputs"] = NemotronVLVisualInputs(pixel_values=pv, num_image_tiles=num_image_tiles)
     # roll label by 1 and fill last token with IGNORE_INDEX
     labels = batch["input_ids"].clone()[:, 1:]
     labels = torch.cat([labels, IGNORE_INDEX * torch.ones_like(labels[:, :1])], dim=1)

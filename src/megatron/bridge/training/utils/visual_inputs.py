@@ -94,6 +94,35 @@ class Qwen2_5_VLVisualInputs:
 
 
 @dataclass
+class NemotronVLVisualInputs:
+    """Container for Nemotron VL visual modality tensors.
+
+    LLaVAModel.forward() expects ``images`` and ``num_image_tiles``
+    rather than the HF-standard ``pixel_values``.  This class stores the
+    HF processor outputs and renames them in normalized_for_model().
+    """
+
+    pixel_values: Optional[torch.Tensor] = None
+    num_image_tiles: Optional[torch.Tensor] = None
+
+    def as_model_kwargs(self) -> dict[str, torch.Tensor]:
+        result: dict[str, torch.Tensor] = {}
+        for f in fields(self):
+            value = getattr(self, f.name)
+            if value is not None:
+                result[f.name] = value
+        return result
+
+    def normalized_for_model(self) -> dict[str, torch.Tensor]:
+        kwargs: dict[str, torch.Tensor] = {}
+        if self.pixel_values is not None:
+            kwargs["images"] = self.pixel_values
+        if self.num_image_tiles is not None:
+            kwargs["num_image_tiles"] = self.num_image_tiles
+        return kwargs
+
+
+@dataclass
 class Qwen2AudioInputs:
     """Container for Qwen2-Audio modality tensors.
 

@@ -233,3 +233,7 @@ source = [
     "/opt/Megatron-Bridge/",
     "/home/runner/work/Megatron-Bridge/Megatron-Bridge",
 ]
+
+[tool.uv.extra-build-dependencies]
+causal-conv1d = ["torch"]
+mamba-ssm = ["torch"]  # 함께 필요한 경우가 많음
