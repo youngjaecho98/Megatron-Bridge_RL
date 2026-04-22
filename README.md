@@ -12,11 +12,11 @@ SimPO를 활용한 Nemotron Nano V2 VL 선호도 최적화(Preference Optimizati
 
 **Reward:**
 
-$$r(y) = \frac{\beta}{|y|} \sum_t \log p(y_t \mid y_{<t}, x)$$
+$$r(y) = \frac{\beta}{\mid y \mid} \sum_t \log p(y_t \mid y_{\lt t}, x)$$
 
 **Loss:**
 
-$$\mathcal{L} = -\log \sigma\big(r(y_w) - r(y_l) - \gamma\big)$$
+$$\mathcal{L} = -\log \sigma (r(y_w) - r(y_l) - \gamma)$$
 
 - $y_w$: chosen response, $y_l$: rejected response
 - $\beta$: temperature (default: 2.0)
