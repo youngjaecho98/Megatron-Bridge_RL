@@ -219,6 +219,123 @@ Runnable tutorials live in `tutorials/recipes/llama` that covers:
 - `01_quickstart_finetune.py` + LoRA configs
 - YAML-driven flows and launch helpers
 
+## SimPO Training (Nemotron Nano V2 VL)
+
+[SimPO](https://arxiv.org/abs/2405.14734) (Simple Preference Optimization) is a reference-model-free preference optimization method that uses length-normalised average log-probability as the implicit reward. Unlike DPO, it does not require a separate reference model forward pass, halving memory and compute cost.
+
+### How It Works
+
+SimPO defines the reward as:
+
+$$r(y) = \frac{\beta}{|y|} \sum_t \log p(y_t \mid y_{<t}, x)$$
+
+The training loss is:
+
+$$\mathcal{L} = -\log \sigma\big(r(y_w) - r(y_l) - \gamma\big)$$
+
+where $y_w$ is the chosen response, $y_l$ is the rejected response, $\beta$ controls temperature, and $\gamma$ is the target reward margin.
+
+### Prerequisites
+
+1. A pretrained or SFT checkpoint (Megatron-Bridge format or HuggingFace model path)
+2. A preference-pair dataset in one of these formats:
+   - **RLAIF-V** (auto-downloaded from HuggingFace)
+   - **SafeWatch DPO** (custom JSONL with `chosen_conversation` / `rejected_conversation` fields)
+
+### Quick Start
+
+**Basic training with RLAIF-V dataset (auto-downloaded):**
+
+```bash
+python -m torch.distributed.run --nproc_per_node=8 \
+    examples/models/vlm/nemotron_vl/simpo_nemotron_nano_v2_vl.py \
+    --pretrained-checkpoint /path/to/sft/checkpoint
+```
+
+**Training with SafeWatch DPO dataset:**
+
+```bash
+python -m torch.distributed.run --nproc_per_node=4 \
+    examples/models/vlm/nemotron_vl/simpo_nemotron_nano_v2_vl.py \
+    --pretrained-checkpoint /path/to/sft/checkpoint \
+    --train-data /path/to/dpo_train.jsonl \
+    --eval-data /path/to/dpo_eval.jsonl
+```
+
+**Quick test with limited data:**
+
+```bash
+python -m torch.distributed.run --nproc_per_node=4 \
+    examples/models/vlm/nemotron_vl/simpo_nemotron_nano_v2_vl.py \
+    --pretrained-checkpoint /path/to/sft/checkpoint \
+    --train-data /path/to/dpo_train.jsonl \
+    --max-preference-samples 200
+```
+
+### Key CLI Arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--pretrained-checkpoint` | (required) | Path to SFT checkpoint or HuggingFace model |
+| `--beta` | `2.0` | SimPO temperature / scaling factor |
+| `--gamma` | `0.5` | Target reward margin between chosen and rejected |
+| `--train-data` | `None` | Path to DPO JSONL file (omit to use RLAIF-V) |
+| `--eval-data` | `None` | Path to evaluation JSONL file |
+| `--max-preference-samples` | `None` | Cap on number of preference pairs to load |
+| `--config-file` | `conf/nemotron_nano_v2_vl_simpo.yaml` | YAML override file |
+
+### Default Config (`nemotron_nano_v2_vl_simpo.yaml`)
+
+| Parameter | Value | Notes |
+|---|---|---|
+| `seq_length` | 4096 | |
+| `train_iters` | 510 | |
+| `global_batch_size` | 16 | |
+| `micro_batch_size` | 1 | Number of *pairs* (actual batch = 2x) |
+| `lr` | 5e-7 | Lower than SFT for preference tuning |
+| `tensor_model_parallel_size` | 2 | |
+| `freeze_vision_model` | `true` | Vision encoder is frozen |
+| `cross_entropy_loss_fusion` | `false` | Must be disabled (SimPO needs raw logits) |
+
+### Logged Metrics
+
+During training, the following metrics are reported:
+
+- **simpo loss**: The SimPO preference loss
+- **reward accuracy**: Fraction of pairs where chosen reward > rejected reward
+- **chosen reward**: Mean reward of chosen responses
+- **rejected reward**: Mean reward of rejected responses
+
+### Inference After SimPO
+
+Run inference on a SimPO-trained checkpoint:
+
+```bash
+bash inference.sh /path/to/simpo/checkpoint /path/to/output_dir
+```
+
+Evaluate results:
+
+```bash
+bash eval.sh
+```
+
+### File Structure
+
+```
+examples/models/vlm/nemotron_vl/
+├── simpo_nemotron_nano_v2_vl.py              # SimPO training entry point
+├── conf/
+│   ├── nemotron_nano_v2_vl_simpo.yaml        # SimPO config overrides
+│   └── nemotron_nano_v2_vl_safewatch.yaml    # SafeWatch SFT config
+src/megatron/bridge/training/
+├── simpo_step.py                              # SimPO loss & forward step
+scripts/
+├── eval_interval_guardrail_metrics.py         # Guardrail metrics evaluation
+├── hf_generate_eval.py                        # HF-based generation eval
+└── vllm_generate_eval.py                      # vLLM-based generation eval
+```
+
 ## Performance Benchmarks
 
 For detailed performance benchmarks including throughput metrics across different GPU systems (DGX-GB200, DGX-B200, DGX-H100) and model configurations, see the [Performance Summary](https://docs.nvidia.com/nemo/megatron-bridge/latest/performance-summary.html) in our documentation.
